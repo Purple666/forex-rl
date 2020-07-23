@@ -164,7 +164,7 @@ class Agent(iqn_agent):
                 # df = np.random.normal(df, np.abs(df * 0.1))
                 # trend = np.random.normal(trend, np.abs(trend * 0.05))
 
-                if self.reset > self.max_size and self.restore is not True:
+                if self.reset > self.max_size or self.restore is True:
 
                     tau = np.random.uniform(0, 1, (step_size, 32))
                     q = np.mean(self.q([df, tau]), -1)
