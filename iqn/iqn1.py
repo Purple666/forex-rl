@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from network import model1 as model
+from network import model2 as model
 from copy import copy
 from memory import Memory
 import time
@@ -36,9 +36,9 @@ class Agent:
         self.money = money
         self.leverage = leverage
         self.restore = restore
-        self.build_model = model
         self.memory = Memory(50000)
         self.state()
+        self.build_model = model
         self.build()
         self.w = self.model.get_weights()
         self.reset = 0
