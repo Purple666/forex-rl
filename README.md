@@ -5,5 +5,5 @@ example
 
 ```
 cd forex_rl
-pythono rl/agent/dqn.py
+python rl/agent/dqn.py
 ```
