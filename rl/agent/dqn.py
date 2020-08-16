@@ -79,13 +79,13 @@ class Agent:
         self.target_q = tf.keras.backend.function(get(self.input_name).input, get(self.output_name).output)
 
     def train(self):
-        tree_idx, replay = self.memory.sample(self.bach_size)
+        replay, tree_idx, is_weight = self.memory.sample(self.bach_size)
 
-        states = np.array([a[0][0] for a in replay], np.float32)
-        new_states = np.array([a[0][3] for a in replay], np.float32)
-        actions = np.array([a[0][1] for a in replay]).reshape((-1,))
-        rewards = np.array([a[0][2] for a in replay], np.float32).reshape((-1,))
-        end = np.array([a[0][4] for a in replay]).reshape((-1,))
+        states = np.array([a[0] for a in replay], np.float32)
+        new_states = np.array([a[3] for a in replay], np.float32)
+        actions = np.array([a[1] for a in replay]).reshape((-1,))
+        rewards = np.array([a[2] for a in replay], np.float32).reshape((-1,))
+        end = np.array([a[4] for a in replay]).reshape((-1,))
 
         target_q = self.target_q(new_states)
         target_a = np.argmax(self.q(new_states), -1)
@@ -177,7 +177,7 @@ class Agent:
             df = self.x[s]
             atr = self.atr[s]
             trend = self.y[s]
-            self.qv = qv = []
+            qv = []
 
             for idx in self.range_:
                 df_ = np.array([df[idx]])
@@ -190,7 +190,9 @@ class Agent:
                     else:
                         a = np.random.randint(self.action_size)
                     actions[idx] = a
-                    a = 0 if a == 0 else -1 if a == 1 else 1
+                else:
+                    actions[idx] = a
+                a = 0 if a == 0 else -1 if a == 1 else 1
                 qv.append(q[a])
 
                 if old_a != a and a != 0:
