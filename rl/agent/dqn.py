@@ -105,7 +105,7 @@ class Agent:
         self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
         ae = np.abs(error.numpy().reshape((-1,)))
-        self.memory.batch_update(tree_idx, ae)
+        self.memory.update(tree_idx, ae)
 
     def step(self, types=1):
         self.exp = []
@@ -177,19 +177,21 @@ class Agent:
             df = self.x[s]
             atr = self.atr[s]
             trend = self.y[s]
+            self.qv = qv = []
 
             for idx in self.range_:
                 df_ = np.array([df[idx]])
-                q = self.q(df_)
+                q = self.q(df_)[0]
                 if actions[idx] is None:
                     if np.random.rand() <= 0.25:
                         a = actions[idx - 1]
                     elif np.random.rand() >= 0.1:
-                        a = np.argmax(q, -1)[0]
+                        a = np.argmax(q)
                     else:
                         a = np.random.randint(self.action_size)
                     actions[idx] = a
                     a = 0 if a == 0 else -1 if a == 1 else 1
+                qv.append(q[a])
 
                 if old_a != a and a != 0:
                     for i_ in range(1, 3):
@@ -212,11 +214,13 @@ class Agent:
                     e = memory[-self.n]
                     r = np.sum(rew[-self.n:-1] * self.n_) if end == 1 else r
 
+                    error = np.abs((r + end * self.gamma ** (self.n - 1) * qv[-1]) - qv[-self.n])
+
                     e[2] = r
                     e[3] = memory[-1][0]
                     if end == 0:
                         e[4] = 0
-                    self.memory.store(e)
+                    self.memory.add(error, e)
                     self.reset += 1
 
                 if self.reset >= 1000 and self.reset % self.replay_ratio == 0:
