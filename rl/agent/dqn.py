@@ -98,7 +98,7 @@ class Agent:
                 q_backup[i, actions[i]] = rewards[i] + end[i] * self.gamma ** (self.n - 1) * target_q[i, target_a[i]]
 
             error = tf.reduce_sum(q_backup - q, -1)
-            loss = tf.reduce_mean(error ** 2)
+            loss = tf.reduce_mean(error ** 2 * is_weight)
 
         self.error = loss
         gradients = tape.gradient(loss, self.model.trainable_variables)
