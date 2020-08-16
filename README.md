@@ -20,4 +20,4 @@ agent = dqn()
 agent.run()
 
 #test
-agent.step(1) #1 = test_sample, 2 = train_sample
+agent.step(1) #1 = train_sample, 2 = test_sample
