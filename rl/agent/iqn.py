@@ -1,16 +1,18 @@
-from rl.network.iqn_netowk import model1 as model, custom_objects
-from rl.agent.dqn import Agent as dqn_Agent
-import numpy as np
-import tensorflow as tf
 import shutil
 import time
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import tensorflow as tf
+
+from rl.agent.dqn import Agent as dqn_Agent
+from rl.network.iqn_netowk import model1 as model, custom_objects
 
 
 class Agent(dqn_Agent):
     name = ["iqn.h5", "iqn_e"]
+    gamma = 0.6
 
     def model_name(self):
         self.custom_objects = custom_objects
@@ -29,7 +31,7 @@ class Agent(dqn_Agent):
 
         tau = np.random.uniform(0, 1, (len(actions), 32))
         target_q = self.target_q([new_states, tau])
-        target_a = np.argmax( np.mean(self.q([new_states, tau]), -1), -1 ).reshape((-1,))
+        target_a = np.argmax(np.mean(self.q([new_states, tau]), -1), -1).reshape((-1,))
 
         with tf.GradientTape() as tape:
             q = self.model([states, tau])
@@ -144,9 +146,7 @@ class Agent(dqn_Agent):
                     else:
                         a = np.random.randint(self.action_size)
                     actions[idx] = a
-                else:
-                    actions[idx] = a
-                a = 0 if a == 0 else -1 if a == 1 else 1
+                    a = 0 if a == 0 else -1 if a == 1 else 1
                 qv.append(q[a])
 
                 if old_a != a and a != 0:
@@ -242,6 +242,7 @@ class Agent(dqn_Agent):
 if __name__ == "__main__":
     # "lr=1e-3, action_size=3, dueling=True, noisy=True, n=3, restore=False, restore_path="rl/save_mode"
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--action_size", type=int, default=3)

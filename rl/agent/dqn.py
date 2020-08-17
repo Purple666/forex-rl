@@ -194,9 +194,7 @@ class Agent:
                     else:
                         a = np.random.randint(self.action_size)
                     actions[idx] = a
-                else:
-                    actions[idx] = a
-                a = 0 if a == 0 else -1 if a == 1 else 1
+                    a = 0 if a == 0 else -1 if a == 1 else 1
                 qv.append(q[a])
 
                 if old_a != a and a != 0:
