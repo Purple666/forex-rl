@@ -235,3 +235,20 @@ class Agent(dqn_Agent):
 
                 if end == 0:
                     break
+
+
+if __name__ == "__main__":
+    # "lr=1e-3, action_size=3, dueling=True, noisy=True, n=3, restore=False, restore_path="rl/save_mode"
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--action_size", type=int, default=3)
+    parser.add_argument("--dueling", type=bool, default=True)
+    parser.add_argument("--noisy", type=bool, default=True)
+    parser.add_argument("--n", type=int, default=3)
+    parser.add_argument("--restore", type=bool, default=False)
+    parser.add_argument("--restore_path", type=str, default="rl/save_mode/")
+    args = parser.parse_args()
+
+    agent = Agent(args.lr, args.action_size, args.dueling, args.noisy, args.n, args.restore, args.restore_path)
+    agent.run()
