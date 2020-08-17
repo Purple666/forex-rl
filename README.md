@@ -1,5 +1,5 @@
 # forex-rl
-fotrx trading reinforcement learning
+fotrx trading tensorflow2(tf 2.x version) reinforcement learning
 
 example
 
