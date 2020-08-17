@@ -105,6 +105,8 @@ class Agent:
         self.error = loss
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+        self.target_model.set_weights(
+            0.001 * np.array(self.model.get_weights()) + 0.999 * np.array(self.target_model.get_weights()))
 
         ae = np.abs(error.numpy().reshape((-1,)))
         self.memory.update(tree_idx, ae)
