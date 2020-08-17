@@ -1,84 +1,22 @@
+from rl.network.iqn_netowk import model1 as model, custom_objects
+from rl.agent.dqn import Agent as dqn_Agent
+import numpy as np
+import tensorflow as tf
 import shutil
 import time
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-import tensorflow as tf
-from rl.memory.memory import Memory
-from rl.network.dqn_network import model1 as model, custom_objects
 
 
-class Agent:
-    memory_size = 10000000
-    step_size = 500
-    money = 10000000
-    leverage = 500
-    ar = 0.05
-    spread = 10
-    name = ["dqn.h5", "dqn_e"]
-    gamma = 0.99
-    bach_size = 64
-    replay_ratio = 40  # 0.25
-    reset = 0
-
-    def __init__(self, lr=1e-3, action_size=3, dueling=True, noisy=True, n=3, restore=False, restore_path="rl/save_model/"):
-        self.lr = lr
-        self.action_size = action_size
-        self.dueling = dueling
-        self.noisy = noisy
-        self.n = n + 1
-        self.n_ = np.array([self.gamma ** i for i in range(self.n - 1)])
-        self.restore = restore
-        self.restore_path = restore_path
-        self.model_name()
-        self.env()
-        self.build()
-        self.memory = Memory(self.memory_size)
-        self.actions = [None for _ in range(self.train_step[-1])]
-        self.range_ = range(self.train_step[-1] - 3)
-
-    def env(self):
-        t = 1
-        x = np.load(f"rl/data/x{t}.npy")
-        shape = x.shape
-        self.x = x.reshape((shape[0], -1, shape[-2], shape[-1]))
-        y = np.load(f"rl/data/target{t}.npy")
-        shape = y.shape
-        y = y.reshape((shape[0], y.shape[2], -1))
-        self.y, self.v, self.atr, self.high, self.low = \
-            y[:, 0], y[:, 1], y[:, 2], y[:, 3], y[:, 4]
-
-        self.train_step = np.arange(0, int(self.x.shape[1] - self.x.shape[1] * 0.2 - self.step_size),
-                                    self.step_size)
-        # self.train_step = np.arange(0, int(self.x.shape[1] - self.x.shape[1] * 0.2 - self.step_size))
-        self.test_step = self.train_step[-1] + self.step_size, self.x.shape[1] - self.step_size
-        self.test_step2 = np.arange(self.test_step[0], self.test_step[1], self.step_size)
+class Agent(dqn_Agent):
+    name = ["iqn.h5", "iqn_e"]
 
     def model_name(self):
         self.custom_objects = custom_objects
         self.build_model = model
-        self.input_name = "i"
+        self.input_name = ["i", "t"]
         self.output_name = "q"
-
-    def build(self):
-        print(self.x.shape[-2:])
-        if self.restore:
-            self.model = tf.keras.models.load_model(self.restore_path + self.name[0], custom_objects=self.custom_objects)
-            self.i = np.load(self.restore_path + self.name[1] + ".npy")
-        else:
-            self.model = self.build_model(self.x.shape[-2:], self.action_size, self.dueling, self.noisy)
-            self.model.compile(tf.keras.optimizers.Adam(self.lr))
-            self.i = 0
-        self.target_model = self.build_model(self.x.shape[-2:], self.action_size, self.dueling, self.noisy)
-        self.target_model.set_weights(self.model.get_weights())
-
-        get = self.model.get_layer
-        inputs = get(self.input_name).input if type(self.input_name) == str else [get(i).input for i in self.input_name]
-        self.q = tf.keras.backend.function(inputs, get(self.output_name).output)
-        get = self.target_model.get_layer
-        inputs = get(self.input_name).input if type(self.input_name) == str else [get(i).input for i in self.input_name]
-        self.target_q = tf.keras.backend.function(inputs, get(self.output_name).output)
 
     def train(self):
         replay, tree_idx, is_weight = self.memory.sample(self.bach_size)
@@ -89,24 +27,32 @@ class Agent:
         rewards = np.array([a[2] for a in replay], np.float32).reshape((-1,))
         end = np.array([a[4] for a in replay]).reshape((-1,))
 
-        target_q = self.target_q(new_states)
-        target_a = np.argmax(self.q(new_states), -1)
+        tau = np.random.uniform(0, 1, (len(actions), 32))
+        target_q = self.target_q([new_states, tau])
+        target_a = np.argmax( np.mean(self.q([new_states, tau]), -1), -1 ).reshape((-1,))
 
         with tf.GradientTape() as tape:
-            q = self.model(states)
+            q = self.model([states, tau])
             q_backup = q.numpy()
 
             for i in range(len(tree_idx)):
                 q_backup[i, actions[i]] = rewards[i] + end[i] * self.gamma ** (self.n - 1) * target_q[i, target_a[i]]
 
-            error = tf.reduce_sum(q_backup - q, -1)
-            loss = tf.reduce_mean(error ** 2 * is_weight)
+            error = q_backup - q
+            error = tf.reduce_sum(error, 1)
+            tau[error < 0] -= 1
+            tau = np.abs(tau)
+            error = tf.abs(error)
+            loss = tf.where(error <= 1, error ** 2 * .5, .5 * 1 ** 2 + 1 * (error - 1))
+            loss = tau * loss
+            loss = tf.reduce_mean(loss, -1)
+            loss = tf.reduce_mean(loss * is_weight)
 
         self.error = loss
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
-        ae = np.abs(error.numpy().reshape((-1,)))
+        ae = np.mean(error.numpy(), -1).reshape((-1,))
         self.memory.update(tree_idx, ae)
 
     def step(self, types=1):
@@ -131,7 +77,8 @@ class Agent:
                 lot = 0
                 money = self.money
 
-                self.a = action = np.argmax(self.q(df), -1)
+                tau = np.random.uniform(0, 1, (self.step_size, 32))
+                self.a = action = np.argmax(np.mean(self.q([df, tau]), -1), -1)
 
                 for idx in range(trend.shape[0] - 3):
                     a = action[idx]
@@ -182,8 +129,11 @@ class Agent:
             qv = []
 
             for idx in self.range_:
+                tau = np.random.uniform(0, 1, (1, 32))
                 df_ = np.array([df[idx]])
-                q = self.q(df_)[0]
+                q = self.q([df_, tau])[0]
+                q = np.mean(q, -1)
+                assert q.shape == (self.action_size,)
                 if actions[idx] is None:
                     if np.random.rand() <= 0.25:
                         a = actions[idx - 1]
@@ -285,20 +235,3 @@ class Agent:
 
                 if end == 0:
                     break
-
-
-if __name__ == "__main__":
-    # "lr=1e-3, action_size=3, dueling=True, noisy=True, n=3, restore=False, restore_path="rl/save_mode"
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--action_size", type=int, default=3)
-    parser.add_argument("--dueling", type=bool, default=True)
-    parser.add_argument("--noisy", type=bool, default=True)
-    parser.add_argument("--n", type=int, default=3)
-    parser.add_argument("--restore", type=bool, default=False)
-    parser.add_argument("--restore_path", type=str, default="rl/save_mode/")
-    args = parser.parse_args()
-
-    agent = Agent(args.lr, args.action_size, args.dueling, args.noisy, args.n, args.restore, args.restore_path)
-    agent.run()
