@@ -26,3 +26,13 @@ agent.step(1) #1 = train_sample, 2 = test_sample
 
 df = pd.DataFrame({"test_list": agent.exp})
 print(df.describe())
+
+        test_list
+count    5.000000
+mean   -24.826886
+std    135.554213
+min   -260.197436
+25%    -12.628688
+50%     20.637042
+75%     57.150688
+max     70.903961
