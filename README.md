@@ -16,7 +16,7 @@ python
 import rl.agent.dqn as dqn
 import pandas as pd
 
-agent = dqn()
+agent = dqn(lr=1e-3, gamma=0.99, dueling=False, noisy=True, n=3, restore=False, restore_path="rl/save_model/")
 
 #train
 agent.run()
