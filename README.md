@@ -24,7 +24,7 @@ agent.run()
 #test
 agent.step(1) #1 = train_sample, 2 = test_sample
 
-# roi (return on invesment)
+# roi (return on investment)
 df = pd.DataFrame({"test_list": agent.exp})
 print(df.describe())
 
