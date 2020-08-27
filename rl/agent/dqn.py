@@ -8,10 +8,11 @@ import pandas as pd
 import tensorflow as tf
 from rl.memory.memory import Memory
 from rl.network.dqn_network import model1 as model, custom_objects
+import tensorflow_addons as tfa
 
 
 class Agent:
-    memory_size = 10000000
+    memory_size = 10000
     step_size = 500
     money = 10000000
     leverage = 500
@@ -21,9 +22,10 @@ class Agent:
     bach_size = 64
     replay_ratio = 40  # 0.25
     reset = 0
-    action_size = 2
+    action_size = 3
 
     def __init__(self, lr=1e-3, gamma=0.99, dueling=True, noisy=True, n=3, restore=False, restore_path="rl/save_model/"):
+        print("1")
         self.lr = lr
         self.dueling = dueling
         self.noisy = noisy
@@ -70,7 +72,8 @@ class Agent:
             self.i = np.load(self.restore_path + self.name[1] + ".npy")
         else:
             self.model = self.build_model(self.x.shape[-2:], self.action_size, self.dueling, self.noisy)
-            self.model.compile(tf.keras.optimizers.Adam(self.lr))
+            opt = tfa.optimizers.Lookahead(tf.keras.optimizers.Nadam(self.lr))
+            self.model.compile(opt)
             self.i = 0
         self.target_model = self.build_model(self.x.shape[-2:], self.action_size, self.dueling, self.noisy)
         self.target_model.set_weights(self.model.get_weights())
@@ -110,11 +113,12 @@ class Agent:
                 loss += tf.reduce_mean(error[:, i] ** 2) * 0.5
             # loss = tf.reduce_mean(error[:,0] ** 2 * is_weight) * .5
 
-        self.error = loss
+        self.error = np.mean(np.sum(np.abs(error), -1))
         gradients = tape.gradient(loss, self.model.trainable_variables)
+        gradients = [tf.clip_by_value(gradients, -1, 1) for gradients in gradients]
         self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
-        # if (self.i + 1) % 1000 == 0:
+        # if (self.i + 1) % 4000 == 0:
         #     self.target_model.set_weights(self.model.get_weights())
 
         self.target_model.set_weights(
@@ -132,45 +136,42 @@ class Agent:
             elif types == 1:
                 h = np.random.choice(self.train_step)
             total_money = self.money
+            self.pip = []
+            self.roi = []
+            self.pip_ = []
 
             for i in range(self.y.shape[0]):
                 self.df = df = self.x[i, h:h + self.step_size]
                 trend = self.y[i, h:h + self.step_size]
                 atr = self.atr[i, h:h + self.step_size]
 
-                lot = trend[0] / self.leverage
-                old_a = None
-                old_idx = 0
                 position = 0
-                self.pip = []
-                self.roi = []
-                self.pip_ = []
-
-                money = self.money
-
+                lot = 0
                 self.a = action = np.argmax(self.q(df), -1)
                 idx = 0
+                old_a = 0
 
                 while True:
                     a = action[idx]
-                    a = 1 if a == 0 else -1
-                    # a = 0 if a == 0 else -1 if a == 1 else 1
-                    if old_a is not None:
-                        p_idx = idx + 5
-                        if old_a != a:
-                            r = old_a * (trend[idx] - trend[old_idx]) - self.spread * np.abs(old_a)
-                            old_idx = idx
-                            self.pip.append(r)
-                            self.roi.append((r - lot) / lot)
-                            lot = trend[idx] / self.leverage
-                        idx = p_idx
+                    a = 0 if a == 0 else -1 if a == 1 else 1
+
+                    if old_a != a:
+                        if old_a != 0:
+                            pip = old_a * (trend[idx] - position) - self.spread * np.abs(a)
+                            self.pip.append(pip)
+                            roi = pip / lot
+                            self.roi.append(roi)
+                        position = trend[idx]
+                        lot = trend[idx] / self.leverage
+
                     old_a = a
+                    idx += 5
 
                     if idx >= (self.step_size - 5):
                         break
 
-                roi = np.mean(self.roi) * 100 if self.roi else 0
-                self.exp.append(roi)
+            roi = np.mean(self.roi) * 100 if self.roi else 0
+            self.exp.append(roi)
 
     def run(self):
         train_h = []
@@ -199,7 +200,9 @@ class Agent:
             self.qv = qv_ = []
             idx = 0
             p_idx = 0
-            lot = trend[0] / self.leverage
+            lot = []
+            position = []
+            losscut = False
 
             while end == 1:
                 df_ = df[idx]
@@ -211,37 +214,30 @@ class Agent:
                     a = np.random.randint(self.action_size)
                 actions[idx] = a
                 qv.append(q[a])
-                a = 1 if a == 0 else -1
-                # a = 0 if a == 0 else -1 if a == 1 else 1
+                a = 0 if a == 0 else -1 if a == 1 else 1
+                pidx = idx + np.random.randint(3, 10)
 
-                # r = 0
-                if old_a is not None:
-                    p_idx = idx + np.random.randint(3, 10)
-                    if old_a != a:
-                        r = (old_a * (trend[idx] - trend[old_idx]) - self.spread * np.abs(old_a))
-                        r = (r - lot) / lot
-                        lot = trend[idx] / self.leverage
-                        qv_.append(qv[-1])
-                        e = [df[old_idx], actions[old_idx], r, df[idx], end]
-                        # e = [df[idx], actions[idx], r, df[p_idx], end]
-                        old_idx = idx
-                        rew.append(r)
-                        memory.append(e)
+                pip = a * (trend[pidx] - trend[idx]) - self.spread * np.abs(a)
+                lot = trend[idx] / self.leverage
+                r = pip / lot
 
-                        if len(rew) >= self.n:
-                            e = memory[-self.n]
-                            if self.n != 2:
-                                r = np.sum(rew[-self.n:-1] * self.n_)
-                                e[2] = r
-                                e[3] = memory[-2][3]
-                            else:
-                                r = e[2]
-                            error = np.abs((r + self.gamma ** (self.n - 1) * qv_[-1]) - qv_[-self.n])
-                            self.memory.add(error, e)
-                            self.reset += 1
+                rew.append(r)
+                e = [df[idx], actions[idx], r, df[pidx], 1]
+                memory.append(e)
+                idx = pidx
 
-                    idx = p_idx
-                old_a = a
+                if len(rew) >= self.n:
+                    e = memory[-self.n]
+                    if self.n != 2:
+                        r = np.sum(rew[-self.n:-1] * self.n_)
+                        e[2] = r
+                        e[3] = memory[-1][3]
+                    else:
+                        r = e[2]
+
+                    error = np.abs((r + self.gamma ** (self.n - 1) * qv[-1]) - qv[-self.n])
+                    self.memory.add(error, e)
+                    self.reset += 1
 
                 if self.reset >= 1000 and self.reset % self.replay_ratio == 0:
                     self.i += 1
@@ -297,7 +293,7 @@ class Agent:
                     start = time.time()
                     np.random.seed(None)
 
-                if p_idx >= self.range_[-1]:
+                if pidx >= self.range_[-2]:
                     break
 
 
