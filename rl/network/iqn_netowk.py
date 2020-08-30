@@ -1,11 +1,15 @@
 import tensorflow as tf
 import numpy as np
 from rl.network.noisy_dense import IndependentDense
+from rl.network.cbam import cbam, ChannelGlobalAvgPool1D, ChannelGlobalMaxPool1D
+import rl.network.convnet as conv
 
-custom_objects = {"IndependentDense": IndependentDense}
+custom_objects = {"IndependentDense": IndependentDense,
+                  "ChannelGlobalAvgPool1D": ChannelGlobalAvgPool1D,
+                  "ChannelGlobalMaxPool1D": ChannelGlobalMaxPool1D}
 
-inputs = tf.keras.layers.Input
 tau_ = tf.keras.layers.Input((32,), name="t")
+position_value = tf.keras.layers.Input((1,), name="p")
 
 
 def quantile(x):
@@ -46,38 +50,63 @@ def output(x, noisy, dueling, action_size):
     dense = IndependentDense if noisy else tf.keras.layers.Dense
 
     if dueling:
-        v = dense(256, "relu", kernel_initializer="he_normal")(x)
+        v = tf.keras.layers.Dense(256, "selu", kernel_initializer="lecun_normal")(x)
+        v = tf.keras.layers.AlphaDropout(0.1)(v)
         v = dense(1)(v)
         v = tf.transpose(v, (0, 2, 1))
 
-        a = dense(256, "relu", kernel_initializer="he_normal")(x)
-        a = dense(action_size)(a)
+        add = []
+        for _ in range(action_size):
+            a = tf.keras.layers.Dense(256, "selu", kernel_initializer="lecun_normal")(x)
+            a = tf.keras.layers.AlphaDropout(0.1)(a)
+            a = dense(1)(a)
+            add.append(a)
+        a = tf.keras.layers.Concatenate()(add)
         a = tf.transpose(a, (0, 2, 1))
 
         x = tf.keras.layers.Lambda(dueling_network, name="q")([a, v])
     else:
-        x = dense(256, "relu", kernel_initializer="he_normal")(x)
-        x = dense(action_size, name="q")(x)
+        x = tf.keras.layers.Dense(256, "selu", kernel_initializer="lecun_normal")(x)
+        x = tf.keras.layers.AlphaDropout(0.1)(x)
+        x = dense(action_size)(x)
+
+        # add = []
+        # for _ in range(action_size):
+        #     a = tf.keras.layers.Dense(256, "selu", kernel_initializer="lecun_normal")(x)
+        #     a = tf.keras.layers.AlphaDropout(0.1)(a)
+        #     a = dense(1)(a)
+        #     add.append(a)
+        # x = tf.keras.layers.Concatenate()(add)
+        x = tf.keras.layers.Lambda(lambda x: tf.transpose(x, (0, 2, 1)), name="q")(x)
+
+    return x
+
+
+def position_net(x=position_value):
+    for _ in range(3):
+        x = tf.keras.layers.Dense(32, "selu", kernel_initializer="lecun_normal")(x)
+        x = tf.keras.layers.AlphaDropout(0.1)(x)
+
+    return x
+
+
+def snn(x: tf.keras.layers.Layer, l=[128, 128, 256, 256, 512, 512]) -> tf.keras.layers.Layer:
+    for l in l:
+        x = tf.keras.layers.Dense(l, "selu", kernel_initializer="lecun_normal")(x)
+        x = tf.keras.layers.AlphaDropout(0.1)(x)
 
     return x
 
 
 def model1(dim: tuple, action_size: int, dueling: bool, noisy: bool) -> tf.keras.Model:
-    i = inputs(dim, name="i")
+    i = tf.keras.layers.Input(dim, name="i")
+    x = tf.keras.layers.Flatten()(i)
 
-    x = tf.keras.layers.Conv1D(512, 3, 2, "same", kernel_initializer="he_normal")(i)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.ReLU()(x)
-    x = tf.keras.layers.Conv1D(256, 3, 2, "same", kernel_initializer="he_normal")(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.ReLU()(x)
-    x = tf.keras.layers.Conv1D(128, 3, 2, "same", kernel_initializer="he_normal")(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.ReLU()(x)
-
-    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    x = snn(x)
+    p = position_net(position_value)
+    x = tf.keras.layers.Concatenate()([x, p])
 
     x = output(x, noisy, dueling, action_size)
 
-    return tf.keras.Model([i, tau_], x)
+    return tf.keras.Model([i, tau_, position_value], x)
 
