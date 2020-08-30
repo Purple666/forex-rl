@@ -7,7 +7,7 @@ import pandas as pd
 import tensorflow as tf
 
 from rl.agent.dqn import Agent as dqn_Agent
-from rl.network.iqn_network2 import model1 as model, custom_objects
+from rl.network.iqn_network import model1 as model, custom_objects
 
 
 class Agent(dqn_Agent):
